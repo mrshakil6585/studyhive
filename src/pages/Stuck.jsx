@@ -14,7 +14,7 @@ import {
 import SlideViewer from "../components/SlideViewer";
 import SiteHeader from "../components/SiteHeader";
 import { useAuth } from "../lib/auth-context";
-import { STORAGE_KEY } from "../lib/requests";
+import { createRequest } from "../lib/requests";
 import { clarify, summarize, draft as draftRequest } from "../lib/ai";
 
 const MAX_TOPICS_LENGTH = 500; // backend limit for selectedOption
@@ -53,6 +53,7 @@ export default function Stuck() {
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [course, setCourse] = useState("");
   const [error, setError] = useState("");
+  const [posting, setPosting] = useState(false);
 
   // Bring the help panel into view when a slide is chosen.
   useEffect(() => {
@@ -171,55 +172,35 @@ export default function Stuck() {
     }
   }
 
-  function handlePostRequest() {
+  async function handlePostRequest() {
     if (!selectedSlide || !draft.trim()) {
       setError("Please write a question before posting.");
       return;
     }
+    if (posting) return;
 
-    const request = {
-      id: `request-${Date.now()}`,
-      title: `Help with slide ${selectedSlide.slideNumber}`,
-      course: course.trim() || "General",
-      slideNumber: selectedSlide.slideNumber,
-      pdfTitle: selectedSlide.pdfTitle,
-      slideSummary: summary,
-      slideText: selectedSlide.slideText,
-      slideImage: selectedSlide.slideImage,
-      topics: selectedTopics,
-      authorName: user && showName ? displayName : null,
-      question: draft.trim(),
-      status: "open",
-      messages: [],
-      createdAt: new Date().toISOString(),
-    };
-
-    let existing = [];
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      existing = Array.isArray(saved) ? saved : [];
-    } catch {
-      // Corrupt storage: start a fresh list.
-    }
+    setPosting(true);
+    setError("");
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([request, ...existing]));
+      const saved = await createRequest({
+        title: `Help with slide ${selectedSlide.slideNumber}`,
+        course: course.trim() || "General",
+        question: draft.trim(),
+        slideNumber: selectedSlide.slideNumber,
+        pdfTitle: selectedSlide.pdfTitle,
+        slideSummary: summary,
+        slideText: selectedSlide.slideText,
+        slideImage: selectedSlide.slideImage,
+        topics: selectedTopics,
+        showName: Boolean(user && showName),
+      });
+      navigate(`/board?request=${saved.id}`);
     } catch (err) {
-      // Browser storage is full (slide images are large): save without the image.
-      console.warn("Saving without slide image:", err);
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify([{ ...request, slideImage: null }, ...existing])
-        );
-      } catch (err2) {
-        console.error(err2);
-        setError("Could not save the demo request.");
-        return;
-      }
+      console.error(err);
+      setError(`Couldn't post your request: ${err.message}`);
+      setPosting(false);
     }
-
-    navigate(`/board?request=${request.id}`);
   }
 
   const allTopics = [...(aiQuestion?.options ?? []), ...extraTopics];
@@ -477,16 +458,20 @@ export default function Stuck() {
                 <button
                   type="button"
                   onClick={handlePostRequest}
-                  disabled={!draft.trim() || loadingDraft}
+                  disabled={!draft.trim() || loadingDraft || posting}
                   className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-lg border-2 border-[#1F1B16] bg-[#FF6B4A] px-5 py-3 font-bold text-white shadow-[3px_3px_0_#1F1B16] disabled:opacity-50"
                 >
-                  <Send size={19} />
-                  Post Demo Request to Board
+                  {posting ? (
+                    <Loader2 className="animate-spin" size={19} />
+                  ) : (
+                    <Send size={19} />
+                  )}
+                  {posting ? "Posting…" : "Post Request to Board"}
                 </button>
 
                 <p className="mt-4 text-center text-xs text-[#665A43]">
-                  Demo mode: this request is saved only in your browser, not
-                  Supabase.
+                  Your request, the slide image and summary will be visible to
+                  StudyHive tutors.
                 </p>
               </div>
             )}

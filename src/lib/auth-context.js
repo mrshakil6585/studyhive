@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 
 export const AuthContext = createContext(null);
 
-// { user, displayName, ready, recovering, signIn, signUp, signOut,
+// { user, userId, displayName, ready, recovering, signIn, signUp, signOut,
 //   sendPasswordReset, updatePassword, finishRecovery, configured }
 export function useAuth() {
   const value = useContext(AuthContext);
