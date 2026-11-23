@@ -5,7 +5,6 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import {
-  ArrowLeft,
   MessageCircle,
   CheckCircle2,
   Send,
@@ -13,81 +12,27 @@ import {
   FileText,
   HelpCircle,
   Trash2,
+  Search,
+  X,
+  Hand,
 } from "lucide-react";
+import SiteHeader from "../components/SiteHeader";
+import { useAuth } from "../lib/auth-context";
+import { loadRequests, saveRequests } from "../lib/requests";
 
-const STORAGE_KEY = "studyhive-demo-requests";
-
-const sampleRequests = [
-  {
-    id: 1,
-    title: "Need help understanding Binary Search",
-    course: "COMP 2210",
-    slideNumber: 7,
-    slideSummary:
-      "Binary search finds a value in a sorted list by repeatedly checking the middle element and discarding the half that can't contain the target.",
-    topics: ["How the search range is halved each step"],
-    question:
-      "Can someone explain how binary search finds an element?",
-    status: "open",
-    messages: [],
-  },
-  {
-    id: 2,
-    title: "TCP Three-Way Handshake",
-    course: "COMP 3270",
-    slideNumber: 12,
-    slideSummary:
-      "TCP opens a connection with three messages (SYN, SYN-ACK, ACK) so both sides agree on starting sequence numbers.",
-    topics: ["What the SYN and ACK flags mean", "Why the sequence numbers increment by one"],
-    question:
-      "I need a simple example of how the TCP three-way handshake works.",
-    status: "open",
-    messages: [],
-  },
-  {
-    id: 3,
-    title: "Understanding React useState",
-    course: "COMP 3540",
-    slideNumber: 4,
-    slideSummary:
-      "useState stores a value between renders and re-renders the component when that value changes.",
-    topics: ["Why a normal variable doesn't update the screen"],
-    question:
-      "Why do we use useState instead of a regular JavaScript variable?",
-    status: "accepted",
-    messages: [
-      {
-        id: 1,
-        text: "useState lets React remember a value and update the screen.",
-        author: "Demo Tutor",
-      },
-    ],
-  },
-];
-
-// Load saved requests and include the sample requests.
-function loadRequests() {
-  try {
-    const saved = JSON.parse(
-      localStorage.getItem(STORAGE_KEY) || "[]"
-    );
-
-    if (Array.isArray(saved)) {
-      const savedIds = new Set(
-        saved.map((request) => String(request.id))
-      );
-
-      const missingSamples = sampleRequests.filter(
-        (request) => !savedIds.has(String(request.id))
-      );
-
-      return [...saved, ...missingSamples];
-    }
-  } catch (error) {
-    console.error("Could not load demo requests:", error);
-  }
-
-  return sampleRequests;
+// Text a search can match: course, title, question, PDF, summary and topics.
+function searchableText(request) {
+  return [
+    request.course,
+    request.title,
+    request.question,
+    request.pdfTitle,
+    request.slideSummary,
+    ...(request.topics ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 // Requests posted from the Stuck page in this browser (not the built-in samples).
@@ -172,31 +117,44 @@ function SlideContext({ request }) {
 }
 
 export default function Board() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { displayName } = useAuth();
 
   const [requests, setRequests] = useState(loadRequests);
   const [selectedId, setSelectedId] = useState(
     () => searchParams.get("request") || "1"
   );
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(() =>
+    ["open", "accepted"].includes(searchParams.get("filter"))
+      ? searchParams.get("filter")
+      : "all"
+  );
+  const query = searchParams.get("q") || "";
+
+  function setQuery(value) {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set("q", value);
+    else next.delete("q");
+    next.delete("request");
+    setSearchParams(next, { replace: true });
+  }
   const [reply, setReply] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   // Save changes so they survive a page refresh.
   useEffect(() => {
     try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(requests)
-      );
+      saveRequests(requests);
     } catch (error) {
       console.error("Could not save demo requests:", error);
     }
   }, [requests]);
 
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const filteredRequests = requests.filter(
     (request) =>
-      filter === "all" || request.status === filter
+      (filter === "all" || request.status === filter) &&
+      words.every((word) => searchableText(request).includes(word))
   );
 
   const selectedRequest =
@@ -244,7 +202,7 @@ export default function Board() {
                 {
                   id: Date.now(),
                   text: message,
-                  author: "Demo Tutor",
+                  author: displayName || "Demo Tutor",
                 },
               ],
             }
@@ -256,28 +214,12 @@ export default function Board() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FBF6EA] px-4 py-10 text-[#1F1B16] sm:px-6">
-      <main className="mx-auto max-w-6xl">
-        {/* Navigation */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <Link
-            to="/"
-            className="flex items-center gap-2 font-bold underline"
-          >
-            <ArrowLeft size={18} />
-            Back to StudyHive
-          </Link>
-
-          <Link
-            to="/stuck"
-            className="rounded-lg border-2 border-[#1F1B16] bg-[#FF6B4A] px-4 py-2 font-bold text-white"
-          >
-            Ask for Help
-          </Link>
-        </div>
-
+    <div className="min-h-screen bg-[#FBF6EA] text-[#1F1B16]">
+      <SiteHeader />
+      <main className="mx-auto max-w-6xl px-4 pb-10 sm:px-6">
         {/* Header */}
-        <div className="mt-10">
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+        <div>
           <div className="mb-3 flex items-center gap-3">
             <Users size={32} />
 
@@ -299,8 +241,48 @@ export default function Board() {
           </p>
         </div>
 
+          <Link
+            to="/stuck"
+            className="flex min-h-12 items-center gap-2 rounded-lg border-2 border-[#1F1B16] bg-[#FF6B4A] px-5 font-bold text-white shadow-[3px_3px_0_#1F1B16] transition hover:-translate-y-0.5 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+          >
+            <Hand size={18} />
+            Ask for Help
+          </Link>
+        </div>
+
+        {/* Search */}
+        <div className="mt-8">
+          <label htmlFor="board-search" className="sr-only">
+            Search requests
+          </label>
+          <div className="relative max-w-xl">
+            <Search
+              size={18}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#665A43]"
+            />
+            <input
+              id="board-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by course, topic or question"
+              className="w-full rounded-lg border-2 border-[#1F1B16] bg-white py-3 pl-10 pr-10 focus:outline-none focus:ring-4 focus:ring-[#F5B82E]/60"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md hover:bg-[#FBF6EA]"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Filters */}
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-4 flex flex-wrap gap-3">
           {[
             { label: "All Requests", value: "all" },
             { label: "Open", value: "open" },
@@ -343,7 +325,7 @@ export default function Board() {
                     String(selectedRequest?.id) ===
                     String(request.id)
                       ? "bg-[#FFF1C7] shadow-[4px_4px_0_#1F1B16]"
-                      : "bg-white hover:bg-[#FFF1C7]"
+                      : "bg-white hover:-translate-y-0.5 hover:bg-[#FFF1C7] hover:shadow-[3px_3px_0_#1F1B16]"
                   }`}
                 >
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -398,9 +380,33 @@ export default function Board() {
               ))}
 
               {filteredRequests.length === 0 && (
-                <p className="rounded-xl bg-white p-6 text-[#665A43]">
-                  No requests in this category.
-                </p>
+                <div className="rounded-xl border-2 border-dashed border-[#1F1B16] bg-white p-6">
+                  <p className="font-bold">
+                    {query
+                      ? `No requests match "${query}" yet.`
+                      : "No requests in this category."}
+                  </p>
+                  <p className="mt-1 text-[#665A43]">
+                    Stuck on something? Be the first to ask.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Link
+                      to="/stuck"
+                      className="rounded-lg border-2 border-[#1F1B16] bg-[#FF6B4A] px-4 py-2 font-bold text-white"
+                    >
+                      Ask for help
+                    </Link>
+                    {query && (
+                      <button
+                        type="button"
+                        onClick={() => setQuery("")}
+                        className="rounded-lg border-2 border-[#1F1B16] bg-white px-4 py-2 font-bold"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </section>
@@ -469,6 +475,10 @@ export default function Board() {
                 <h3 className="mt-3 text-2xl font-extrabold">
                   {selectedRequest.title}
                 </h3>
+
+                <p className="mt-1 text-sm text-[#665A43]">
+                  Posted by {selectedRequest.authorName || "an anonymous student"}
+                </p>
 
                 <p className="mt-4 leading-relaxed">
                   {selectedRequest.question}
