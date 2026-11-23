@@ -74,10 +74,10 @@ export default function Stuck() {
     setDraft("");
     setError("");
 
-    if (!slide.slideText) {
+    if (!slide.slideText && !slide.slideImage) {
       setAiQuestion(fallbackQuestion);
       setAiNotice(
-        "This slide has no readable text (it may be an image), so the AI can't read it. Pick a topic or add your own."
+        "Couldn't read this slide, so the AI can't help with it. Pick a topic or add your own."
       );
       return;
     }
@@ -86,7 +86,7 @@ export default function Stuck() {
     setLoadingAI(true);
 
     // Run the summary and clarification at the same time.
-    summarize(slide.slideText, slide.slideNumber)
+    summarize(slide)
       .then((result) => {
         if (run === runRef.current) setSummary(result.explanation);
       })
@@ -96,7 +96,7 @@ export default function Stuck() {
       });
 
     try {
-      const result = await clarify(slide.slideText, slide.slideNumber);
+      const result = await clarify(slide);
       if (run === runRef.current) setAiQuestion(result);
     } catch (err) {
       console.error(err);
@@ -149,7 +149,7 @@ export default function Stuck() {
       `"${selectedSlide.pdfTitle}". I don't understand: ${topicsText}. ` +
       `Could someone please explain it to me?`;
 
-    if (!selectedSlide.slideText) {
+    if (!selectedSlide.slideText && !selectedSlide.slideImage) {
       setDraft(fallbackDraft);
       setLoadingDraft(false);
       return;
@@ -157,8 +157,7 @@ export default function Stuck() {
 
     try {
       const result = await draftRequest(
-        selectedSlide.slideText,
-        selectedSlide.slideNumber,
+        selectedSlide,
         "I'm stuck on this slide. These are the parts I don't understand.",
         topicsText
       );

@@ -4,7 +4,7 @@ import { explain } from "../lib/ai";
 
 // AI Study Companion: ask a question about the current slide and get
 // an explanation plus an example from the studyhive-ai "explain" action.
-// `getSlide` reads the current slide: () => Promise<{ slideNumber, slideText }>
+// `getSlide` reads the current slide: () => Promise<{ slideNumber, slideText, slideImage }>
 export default function AIStudyCompanion({ getSlide, slideNumber }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState(null);
@@ -21,16 +21,13 @@ export default function AIStudyCompanion({ getSlide, slideNumber }) {
     try {
       const slide = await getSlide();
 
-      if (!slide.slideText) {
-        setError(
-          "This slide has no readable text (it may be an image), so the AI can't explain it."
-        );
+      if (!slide.slideText && !slide.slideImage) {
+        setError("Couldn't read this slide. Please try again.");
         return;
       }
 
       const result = await explain(
-        slide.slideText,
-        slide.slideNumber,
+        slide,
         question.trim() || "Explain this slide in simple terms."
       );
 
