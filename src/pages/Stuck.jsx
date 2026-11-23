@@ -6,12 +6,15 @@ import {
   CheckCircle2,
   Pencil,
   Send,
+  Loader2,
 } from "lucide-react";
 import SlideViewer from "../components/SlideViewer";
+import { clarify, draft as draftRequest } from "../lib/ai";
 
 const STORAGE_KEY = "studyhive-demo-requests";
 
-const sampleQuestion = {
+// Only used if the AI service is unreachable, so the flow never dead-ends.
+const fallbackQuestion = {
   question: "Which part of this slide is confusing?",
   options: [
     "I don't understand the main concept",
@@ -19,6 +22,8 @@ const sampleQuestion = {
     "I need an example to understand it",
   ],
 };
+
+const CONFUSION = "I don't understand this slide.";
 
 export default function Stuck() {
   const navigate = useNavigate();
@@ -28,34 +33,62 @@ export default function Stuck() {
   const [draft, setDraft] = useState("");
   const [course, setCourse] = useState("");
   const [error, setError] = useState("");
+  const [aiQuestion, setAiQuestion] = useState(null);
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [loadingDraft, setLoadingDraft] = useState(false);
+  const [aiFallback, setAiFallback] = useState(false);
 
-  function handleSlideSelected(slide) {
+  async function handleSlideSelected(slide) {
     setSelectedSlide(slide);
     setSelectedOption(null);
     setDraft("");
     setError("");
+    setAiQuestion(null);
+    setAiFallback(false);
+    setLoadingAI(true);
+
+    try {
+      const result = await clarify(
+        slide.slideText,
+        slide.slideNumber,
+        CONFUSION
+      );
+      setAiQuestion(result);
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+      setAiQuestion(fallbackQuestion);
+      setAiFallback(true);
+    } finally {
+      setLoadingAI(false);
+    }
   }
 
-  function handleOptionSelect(option) {
+  async function handleOptionSelect(option) {
     setSelectedOption(option);
+    setError("");
+    setLoadingDraft(true);
 
-    let difficulty = "";
+    const fallbackDraft =
+      `I'm having trouble with slide ${selectedSlide.slideNumber} of ` +
+      `"${selectedSlide.pdfTitle}": ${option}. ` +
+      `Could someone please explain it to me?`;
 
-    if (option === "I don't understand the main concept") {
-      difficulty = "understanding the main concept";
-    } else if (option === "I don't understand how it works") {
-      difficulty = "understanding how the concept works";
-    } else {
-      difficulty =
-        "understanding this topic without a practical example";
+    try {
+      const result = await draftRequest(
+        selectedSlide.slideText,
+        selectedSlide.slideNumber,
+        CONFUSION,
+        option
+      );
+      setDraft(result.draft);
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+      setDraft(fallbackDraft);
+    } finally {
+      setLoadingDraft(false);
     }
-
-    setDraft(
-      `I'm having trouble ${difficulty} on slide ` +
-      `${selectedSlide.slideNumber} of ` +
-      `"${selectedSlide.pdfTitle}". ` +
-      `Could someone please explain it to me?`
-    );
   }
 
   function handlePostRequest() {
@@ -143,15 +176,33 @@ export default function Stuck() {
             </div>
 
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#665A43]">
-              Sample clarification question
+              {aiFallback ? "Generic question (AI unavailable)" : "AI clarification question"}
             </p>
 
-            <p className="mb-6 text-xl font-semibold">
-              {sampleQuestion.question}
-            </p>
+            {loadingAI && (
+              <p
+                role="status"
+                className="mb-6 flex items-center gap-2 text-lg font-semibold"
+              >
+                <Loader2 className="animate-spin" size={22} />
+                Reading your slide…
+              </p>
+            )}
+
+            {aiFallback && error && (
+              <p role="alert" className="mb-4 font-medium text-red-700">
+                {error} Showing a generic question instead.
+              </p>
+            )}
+
+            {aiQuestion && (
+              <p className="mb-6 text-xl font-semibold">
+                {aiQuestion.question}
+              </p>
+            )}
 
             <div className="space-y-3">
-              {sampleQuestion.options.map((option) => (
+              {(aiQuestion?.options ?? []).map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -186,8 +237,9 @@ export default function Stuck() {
                 </div>
 
                 <p className="mb-5 text-sm text-[#665A43]">
-                  Review and edit your question before
-                  posting it to the demo board.
+                  AI wrote this draft from your slide and your
+                  choice. It can make mistakes, so review and
+                  edit it before posting.
                 </p>
 
                 <label
@@ -224,7 +276,12 @@ export default function Stuck() {
                   }
                   rows={5}
                   maxLength={2000}
-                  placeholder="Describe your question..."
+                  disabled={loadingDraft}
+                  placeholder={
+                    loadingDraft
+                      ? "Writing your request…"
+                      : "Describe your question..."
+                  }
                   className="mt-2 w-full resize-y rounded-lg border-2 border-[#1F1B16] p-4"
                 />
 
@@ -244,7 +301,7 @@ export default function Stuck() {
                 <button
                   type="button"
                   onClick={handlePostRequest}
-                  disabled={!draft.trim()}
+                  disabled={!draft.trim() || loadingDraft}
                   className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-lg border-2 border-[#1F1B16] bg-[#FF6B4A] px-5 py-3 font-bold text-white shadow-[3px_3px_0_#1F1B16] disabled:opacity-50"
                 >
                   <Send size={19} />
