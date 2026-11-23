@@ -61,7 +61,11 @@ Output: {"question":"...","options":["...","...","..."]}`;
     case "draft":
       return `${base}\nOriginal confusion: ${JSON.stringify(confusion)}
 Selected option: ${JSON.stringify(selectedOption)}
-Rewrite the confusion as a specific, natural first-person peer tutor request in one or two sentences. Do not claim the student understands something unless they said it.
+Rewrite the confusion as a specific, natural first-person peer tutor request in one or two sentences. Never claim the student understands a concept unless
+they explicitly stated that they understand it.
+Do not begin with "I understand" unless the student's
+own words establish that understanding.
+Preserve the original confusion accurately.
 Output: {"draft":"..."}`;
     case "explain":
       return `${base}\nQuestion: ${JSON.stringify(question || "Explain this slide simply.")}
@@ -205,7 +209,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const started = Date.now();
   try {
-    const response = await fetch(
+   let response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
@@ -217,6 +221,39 @@ Deno.serve(async (request: Request): Promise<Response> => {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       },
     );
+
+    // Retry once when Gemini is temporarily unavailable.
+    if (response.status === 503) {
+      console.warn("Gemini unavailable; retrying once");
+
+      await response.body?.cancel();
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1500)
+      );
+
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: prompt }],
+              },
+            ],
+            generationConfig: config,
+          }),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        }
+      );
+    }
+
     console.log("StudyHive Gemini status", { action, status: response.status, elapsedMs: Date.now() - started });
 
     if (!response.ok) {

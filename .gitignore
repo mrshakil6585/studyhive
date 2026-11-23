@@ -23,3 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 .env.local
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Supabase local state
+supabase/.temp/
