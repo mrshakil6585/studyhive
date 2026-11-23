@@ -12,6 +12,8 @@
     "packageJson": {
       "dependencies": [
         "npm:@eslint/js@^10.0.1",
+        "npm:@supabase/supabase-js@^2.119.2",
+        "npm:@tailwindcss/vite@^4.3.5",
         "npm:@types/react-dom@^19.3.0",
         "npm:@types/react@^19.3.0",
         "npm:@vitejs/plugin-react@^6.1.2",
@@ -19,8 +21,12 @@
         "npm:eslint-plugin-react-refresh@~0.5.7",
         "npm:eslint@^10.14.0",
         "npm:globals@^17.13.0",
+        "npm:lucide-react@^1.77.0",
         "npm:react-dom@^19.3.1",
+        "npm:react-pdf@^11.1.0",
+        "npm:react-router-dom@^7.18.6",
         "npm:react@^19.3.1",
+        "npm:tailwindcss@^4.3.5",
         "npm:vite@^8.3.6"
       ]
     }
