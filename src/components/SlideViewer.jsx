@@ -72,14 +72,18 @@ export default function SlideViewer({ onStuck }) {
       .join(" ")
       .trim();
 
+    // The image lets the AI read diagrams and text that is part of a picture.
+    const slideImage = await captureSlideImage();
+
     return {
       slideNumber: page,
       slideText,
+      slideImage,
       pdfTitle: file.name,
     };
   }
 
-  // Render the current slide to a small JPEG so tutors can see it on the board.
+  // Render the current slide to a JPEG (sent to the AI and shown to tutors).
   async function captureSlideImage() {
     try {
       const pdfPage = await pdfRef.current.getPage(page);
@@ -110,7 +114,6 @@ export default function SlideViewer({ onStuck }) {
 
     try {
       const slide = await readCurrentSlide();
-      slide.slideImage = await captureSlideImage();
 
       onStuck?.(slide);
     } catch (err) {

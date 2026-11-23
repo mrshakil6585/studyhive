@@ -64,13 +64,21 @@ async function callAI(payload) {
   return data;
 }
 
-// Prepare slide text.
-const safe = (text, n) =>
-  (
-    text && text.trim()
-      ? text
-      : `This slide (number ${n}) has no readable text.`
+// Slide fields sent with every AI request.
+// `slide` is { slideText, slideNumber, slideImage? } from SlideViewer.
+function slidePayload(slide) {
+  const text = slide.slideText?.trim();
+  const slideText = (
+    text ||
+    (slide.slideImage
+      ? "(No text could be extracted. Use the attached slide image.)"
+      : `This slide (number ${slide.slideNumber}) has no readable text.`)
   ).slice(0, 15000);
+
+  return slide.slideImage
+    ? { slideText, slideImage: slide.slideImage }
+    : { slideText };
+}
 
 // Default "stuck" description. Worded so the AI offers concepts the
 // student might be confused about, not answers to the slide's exercise.
@@ -81,50 +89,24 @@ export const STUCK_CONFUSION =
   "understand, each described as what I'm confused about (for example: " +
   '"What X means", "Why Y happens", "How to do Z").';
 
-// AI Action 1: Clarification
-export const clarify = (
-  slideText,
-  slideNumber,
-  confusion = STUCK_CONFUSION
-) =>
-  callAI({
-    action: "clarify",
-    slideText: safe(slideText, slideNumber),
-    confusion,
-  });
+// AI Action 1: Clarification -> { question, options: [3 strings] }
+export const clarify = (slide, confusion = STUCK_CONFUSION) =>
+  callAI({ action: "clarify", ...slidePayload(slide), confusion });
 
 // Brief slide summary (uses the "explain" action) -> { explanation, example }
-export const summarize = (slideText, slideNumber) =>
+export const summarize = (slide) =>
   callAI({
     action: "explain",
-    slideText: safe(slideText, slideNumber),
+    ...slidePayload(slide),
     question:
       "In 2-3 short sentences, summarize what this slide covers and what " +
       "the student is expected to understand or do. Do not solve any exercise.",
   });
 
-// AI Action 2: Tutoring request draft
-export const draft = (
-  slideText,
-  slideNumber,
-  confusion,
-  selectedOption
-) =>
-  callAI({
-    action: "draft",
-    slideText: safe(slideText, slideNumber),
-    confusion,
-    selectedOption,
-  });
+// AI Action 2: Tutoring request draft -> { draft }
+export const draft = (slide, confusion, selectedOption) =>
+  callAI({ action: "draft", ...slidePayload(slide), confusion, selectedOption });
 
-// AI Action 3: AI Study Companion
-export const explain = (
-  slideText,
-  slideNumber,
-  question = ""
-) =>
-  callAI({
-    action: "explain",
-    slideText: safe(slideText, slideNumber),
-    question,
-  });
+// AI Action 3: AI Study Companion -> { explanation, example }
+export const explain = (slide, question = "") =>
+  callAI({ action: "explain", ...slidePayload(slide), question });
