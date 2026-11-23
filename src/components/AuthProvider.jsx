@@ -74,6 +74,8 @@ export default function AuthProvider({ children }) {
       configured: isSupabaseConfigured,
       ready,
       user,
+      // Id of the current session, including anonymous ones (used for "your post").
+      userId: session?.user?.id ?? null,
       displayName,
       recovering,
 

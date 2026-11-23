@@ -1,28 +1,6 @@
 
 import { supabase } from "./supabase";
-
-// Authenticate before calling Mahi's AI backend.
-async function ensureSession() {
-  if (!supabase) {
-    throw new Error("AI is not configured yet. Add the Supabase key to .env.");
-  }
-
-  const { data, error } =
-    await supabase.auth.getSession();
-
-  if (error) throw error;
-
-  if (data.session) {
-    return data.session;
-  }
-
-  const { data: authData, error: authError } =
-    await supabase.auth.signInAnonymously();
-
-  if (authError) throw authError;
-
-  return authData.session;
-}
+import { ensureSession } from "./session";
 
 // Call Mahi's studyhive-ai Edge Function.
 async function callAI(payload) {

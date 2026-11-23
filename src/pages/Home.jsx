@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import SiteHeader, { Logo } from "../components/SiteHeader";
 import { useAuth } from "../lib/auth-context";
-import { loadRequests } from "../lib/requests";
+import { countOpenRequests } from "../lib/requests";
 
 const display = { fontFamily: "'Fraunces', serif" };
 
@@ -77,9 +77,18 @@ export default function Home() {
 
   const [slideIndex, setSlideIndex] = useState(0);
   const [demoChoice, setDemoChoice] = useState("releasing");
-  const [openCount] = useState(
-    () => loadRequests().filter((request) => request.status === "open").length
-  );
+  const [openCount, setOpenCount] = useState(null);
+
+  // Live count of open requests from Supabase.
+  useEffect(() => {
+    let cancelled = false;
+    countOpenRequests()
+      .then((count) => !cancelled && setOpenCount(count))
+      .catch((err) => console.error("Couldn't count requests:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Rotate the slide number in the headline.
   useEffect(() => {
@@ -174,8 +183,11 @@ export default function Home() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF6B4A] opacity-60" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#FF6B4A]" />
               </span>
-              {openCount} open {openCount === 1 ? "request" : "requests"} on
-              the board right now
+              {openCount === null
+                ? "See who needs help on the board"
+                : openCount === 0
+                  ? "No open requests yet. Be the first to ask"
+                  : `${openCount} open ${openCount === 1 ? "request" : "requests"} on the board right now`}
             </Link>
             <p className="flex items-center gap-2">
               <ShieldCheck size={16} />
