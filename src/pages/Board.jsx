@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Send,
   Users,
+  FileText,
+  HelpCircle,
 } from "lucide-react";
 
 const STORAGE_KEY = "studyhive-demo-requests";
@@ -20,6 +22,9 @@ const sampleRequests = [
     title: "Need help understanding Binary Search",
     course: "COMP 2210",
     slideNumber: 7,
+    slideSummary:
+      "Binary search finds a value in a sorted list by repeatedly checking the middle element and discarding the half that can't contain the target.",
+    topics: ["How the search range is halved each step"],
     question:
       "Can someone explain how binary search finds an element?",
     status: "open",
@@ -30,6 +35,9 @@ const sampleRequests = [
     title: "TCP Three-Way Handshake",
     course: "COMP 3270",
     slideNumber: 12,
+    slideSummary:
+      "TCP opens a connection with three messages (SYN, SYN-ACK, ACK) so both sides agree on starting sequence numbers.",
+    topics: ["What the SYN and ACK flags mean", "Why the sequence numbers increment by one"],
     question:
       "I need a simple example of how the TCP three-way handshake works.",
     status: "open",
@@ -40,6 +48,9 @@ const sampleRequests = [
     title: "Understanding React useState",
     course: "COMP 3540",
     slideNumber: 4,
+    slideSummary:
+      "useState stores a value between renders and re-renders the component when that value changes.",
+    topics: ["Why a normal variable doesn't update the screen"],
     question:
       "Why do we use useState instead of a regular JavaScript variable?",
     status: "accepted",
@@ -76,6 +87,82 @@ function loadRequests() {
   }
 
   return sampleRequests;
+}
+
+function requestLabel(request) {
+  return [
+    request.course,
+    request.pdfTitle,
+    `Slide ${request.slideNumber}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// Shows tutors the slide the student is stuck on and what they picked.
+function SlideContext({ request }) {
+  const { slideImage, slideSummary, topics, slideText } = request;
+
+  if (!slideImage && !slideSummary && !topics?.length && !slideText) {
+    return null;
+  }
+
+  return (
+    <div className="mt-6 space-y-4 rounded-xl border-2 border-[#1F1B16] bg-[#FBF6EA] p-4">
+      {slideImage && (
+        <figure>
+          <img
+            src={slideImage}
+            alt={`Slide ${request.slideNumber}${request.pdfTitle ? ` of ${request.pdfTitle}` : ""}`}
+            className="w-full rounded-lg border-2 border-[#1F1B16] bg-white"
+          />
+          <figcaption className="mt-2 text-xs text-[#665A43]">
+            The slide the student is stuck on
+          </figcaption>
+        </figure>
+      )}
+
+      {slideSummary && (
+        <div>
+          <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#665A43]">
+            <FileText size={15} />
+            Slide in brief
+          </p>
+          <p className="leading-relaxed">{slideSummary}</p>
+        </div>
+      )}
+
+      {topics?.length > 0 && (
+        <div>
+          <p className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#665A43]">
+            <HelpCircle size={15} />
+            Stuck on
+          </p>
+          <ul className="flex flex-wrap gap-2">
+            {topics.map((topic) => (
+              <li
+                key={topic}
+                className="rounded-full border border-[#1F1B16] bg-white px-3 py-1 text-sm font-semibold"
+              >
+                {topic}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {slideText && (
+        <details>
+          <summary className="cursor-pointer text-sm font-bold">
+            Show slide text
+          </summary>
+          <p className="mt-2 whitespace-pre-line text-sm text-[#4a4338]">
+            {slideText}
+          </p>
+        </details>
+      )}
+    </div>
+  );
 }
 
 export default function Board() {
@@ -245,8 +332,7 @@ export default function Board() {
                 >
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-bold text-[#665A43]">
-                      {request.course} · Slide{" "}
-                      {request.slideNumber}
+                      {requestLabel(request)}
                     </span>
 
                     <span
@@ -266,9 +352,22 @@ export default function Board() {
                     {request.title}
                   </h3>
 
-                  <p className="mt-2 text-sm text-[#665A43]">
+                  <p className="mt-2 line-clamp-3 text-sm text-[#665A43]">
                     {request.question}
                   </p>
+
+                  {request.topics?.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {request.topics.map((topic) => (
+                        <span
+                          key={topic}
+                          className="rounded-full border border-[#1F1B16] bg-white px-3 py-1 text-xs font-semibold"
+                        >
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="mt-4 flex items-center gap-2 text-sm font-bold">
                     <MessageCircle size={17} />
@@ -294,8 +393,7 @@ export default function Board() {
             {selectedRequest ? (
               <div className="rounded-xl border-2 border-[#1F1B16] bg-white p-5 shadow-[5px_5px_0_#1F1B16] sm:p-6">
                 <p className="text-sm font-bold text-[#665A43]">
-                  {selectedRequest.course} · Slide{" "}
-                  {selectedRequest.slideNumber}
+                  {requestLabel(selectedRequest)}
                 </p>
 
                 <h3 className="mt-3 text-2xl font-extrabold">
@@ -305,6 +403,8 @@ export default function Board() {
                 <p className="mt-4 leading-relaxed">
                   {selectedRequest.question}
                 </p>
+
+                <SlideContext request={selectedRequest} />
 
                 {/* Accept request */}
                 {selectedRequest.status === "open" ? (

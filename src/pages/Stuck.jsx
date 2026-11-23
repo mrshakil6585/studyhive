@@ -1,90 +1,167 @@
-
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Sparkles,
   CheckCircle2,
+  Circle,
   Pencil,
+  Plus,
   Send,
   Loader2,
+  FileText,
+  X,
 } from "lucide-react";
 import SlideViewer from "../components/SlideViewer";
-import { clarify, draft as draftRequest } from "../lib/ai";
+import { clarify, summarize, draft as draftRequest } from "../lib/ai";
 
 const STORAGE_KEY = "studyhive-demo-requests";
+const MAX_TOPICS_LENGTH = 500; // backend limit for selectedOption
 
 // Only used if the AI service is unreachable, so the flow never dead-ends.
 const fallbackQuestion = {
   question: "Which part of this slide is confusing?",
   options: [
-    "I don't understand the main concept",
-    "I don't understand how it works",
-    "I need an example to understand it",
+    "The main concept on this slide",
+    "How the steps or process work",
+    "How to apply it to an example",
   ],
 };
 
-const CONFUSION = "I don't understand this slide.";
-
 export default function Stuck() {
   const navigate = useNavigate();
+  const panelRef = useRef(null);
+  const runRef = useRef(0);
 
   const [selectedSlide, setSelectedSlide] = useState(null);
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [draft, setDraft] = useState("");
-  const [course, setCourse] = useState("");
-  const [error, setError] = useState("");
+
+  const [summary, setSummary] = useState("");
+  const [loadingSummary, setLoadingSummary] = useState(false);
+
   const [aiQuestion, setAiQuestion] = useState(null);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [aiNotice, setAiNotice] = useState("");
+
+  const [extraTopics, setExtraTopics] = useState([]);
+  const [selectedTopics, setSelectedTopics] = useState([]);
+  const [customTopic, setCustomTopic] = useState("");
+
+  const [draft, setDraft] = useState("");
   const [loadingDraft, setLoadingDraft] = useState(false);
-  const [aiFallback, setAiFallback] = useState(false);
+  const [course, setCourse] = useState("");
+  const [error, setError] = useState("");
+
+  // Bring the help panel into view when a slide is chosen.
+  useEffect(() => {
+    if (selectedSlide) {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedSlide]);
 
   async function handleSlideSelected(slide) {
+    const run = ++runRef.current;
+
     setSelectedSlide(slide);
-    setSelectedOption(null);
+    setSummary("");
+    setAiQuestion(null);
+    setAiNotice("");
+    setExtraTopics([]);
+    setSelectedTopics([]);
+    setCustomTopic("");
     setDraft("");
     setError("");
-    setAiQuestion(null);
-    setAiFallback(false);
+
+    if (!slide.slideText) {
+      setAiQuestion(fallbackQuestion);
+      setAiNotice(
+        "This slide has no readable text (it may be an image), so the AI can't read it. Pick a topic or add your own."
+      );
+      return;
+    }
+
+    setLoadingSummary(true);
     setLoadingAI(true);
 
+    // Run the summary and clarification at the same time.
+    summarize(slide.slideText, slide.slideNumber)
+      .then((result) => {
+        if (run === runRef.current) setSummary(result.explanation);
+      })
+      .catch((err) => console.error("Summary failed:", err))
+      .finally(() => {
+        if (run === runRef.current) setLoadingSummary(false);
+      });
+
     try {
-      const result = await clarify(
-        slide.slideText,
-        slide.slideNumber,
-        CONFUSION
-      );
-      setAiQuestion(result);
+      const result = await clarify(slide.slideText, slide.slideNumber);
+      if (run === runRef.current) setAiQuestion(result);
     } catch (err) {
       console.error(err);
-      setError(err.message);
-      setAiQuestion(fallbackQuestion);
-      setAiFallback(true);
+      if (run === runRef.current) {
+        setAiQuestion(fallbackQuestion);
+        setAiNotice(`${err.message} Showing general topics instead.`);
+      }
     } finally {
-      setLoadingAI(false);
+      if (run === runRef.current) setLoadingAI(false);
     }
   }
 
-  async function handleOptionSelect(option) {
-    setSelectedOption(option);
+  function toggleTopic(topic) {
+    setSelectedTopics((current) =>
+      current.includes(topic)
+        ? current.filter((t) => t !== topic)
+        : [...current, topic]
+    );
+  }
+
+  function addCustomTopic() {
+    const topic = customTopic.trim();
+    if (!topic) return;
+
+    const allTopics = [...(aiQuestion?.options ?? []), ...extraTopics];
+    if (!allTopics.includes(topic)) {
+      setExtraTopics((current) => [...current, topic]);
+    }
+    setSelectedTopics((current) =>
+      current.includes(topic) ? current : [...current, topic]
+    );
+    setCustomTopic("");
+  }
+
+  function removeExtraTopic(topic) {
+    setExtraTopics((current) => current.filter((t) => t !== topic));
+    setSelectedTopics((current) => current.filter((t) => t !== topic));
+  }
+
+  async function handleWriteRequest() {
+    if (!selectedTopics.length || loadingDraft) return;
+
     setError("");
     setLoadingDraft(true);
 
+    const topicsText = selectedTopics.join("; ").slice(0, MAX_TOPICS_LENGTH);
+
     const fallbackDraft =
-      `I'm having trouble with slide ${selectedSlide.slideNumber} of ` +
-      `"${selectedSlide.pdfTitle}": ${option}. ` +
+      `I'm stuck on slide ${selectedSlide.slideNumber} of ` +
+      `"${selectedSlide.pdfTitle}". I don't understand: ${topicsText}. ` +
       `Could someone please explain it to me?`;
+
+    if (!selectedSlide.slideText) {
+      setDraft(fallbackDraft);
+      setLoadingDraft(false);
+      return;
+    }
 
     try {
       const result = await draftRequest(
         selectedSlide.slideText,
         selectedSlide.slideNumber,
-        CONFUSION,
-        option
+        "I'm stuck on this slide. These are the parts I don't understand.",
+        topicsText
       );
       setDraft(result.draft);
     } catch (err) {
       console.error(err);
-      setError(err.message);
+      setError(`${err.message} We wrote a simple draft for you instead.`);
       setDraft(fallbackDraft);
     } finally {
       setLoadingDraft(false);
@@ -102,29 +179,46 @@ export default function Stuck() {
       title: `Help with slide ${selectedSlide.slideNumber}`,
       course: course.trim() || "General",
       slideNumber: selectedSlide.slideNumber,
+      pdfTitle: selectedSlide.pdfTitle,
+      slideSummary: summary,
+      slideText: selectedSlide.slideText,
+      slideImage: selectedSlide.slideImage,
+      topics: selectedTopics,
       question: draft.trim(),
       status: "open",
       messages: [],
+      createdAt: new Date().toISOString(),
     };
 
+    let existing = [];
     try {
-      const saved = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || "[]"
-      );
-
-      const existing = Array.isArray(saved) ? saved : [];
-
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify([request, ...existing])
-      );
-
-      navigate(`/board?request=${request.id}`);
-    } catch (err) {
-      console.error(err);
-      setError("Could not save the demo request.");
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      existing = Array.isArray(saved) ? saved : [];
+    } catch {
+      // Corrupt storage: start a fresh list.
     }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([request, ...existing]));
+    } catch (err) {
+      // Browser storage is full (slide images are large): save without the image.
+      console.warn("Saving without slide image:", err);
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify([{ ...request, slideImage: null }, ...existing])
+        );
+      } catch (err2) {
+        console.error(err2);
+        setError("Could not save the demo request.");
+        return;
+      }
+    }
+
+    navigate(`/board?request=${request.id}`);
   }
+
+  const allTopics = [...(aiQuestion?.options ?? []), ...extraTopics];
 
   return (
     <div className="min-h-screen bg-[#FBF6EA] px-4 py-10 text-[#1F1B16] sm:px-6">
@@ -154,19 +248,17 @@ export default function Stuck() {
         <SlideViewer onStuck={handleSlideSelected} />
 
         {selectedSlide && (
-          <section className="mt-10 rounded-xl border-2 border-[#1F1B16] bg-[#FFF1C7] p-5 shadow-[5px_5px_0_#1F1B16] sm:p-6">
-
+          <section
+            ref={panelRef}
+            className="mt-10 scroll-mt-6 rounded-xl border-2 border-[#1F1B16] bg-[#FFF1C7] p-5 shadow-[5px_5px_0_#1F1B16] sm:p-6"
+          >
             <p className="text-sm font-bold text-[#665A43]">
-              Selected: Slide {selectedSlide.slideNumber}
-            </p>
-
-            <p className="mt-1 text-sm text-[#665A43]">
+              Selected: Slide {selectedSlide.slideNumber} ·{" "}
               {selectedSlide.pdfTitle}
             </p>
 
-            <div className="mb-4 mt-7 flex items-center gap-2">
+            <div className="mb-4 mt-5 flex items-center gap-2">
               <Sparkles size={25} />
-
               <h2
                 className="text-2xl font-extrabold"
                 style={{ fontFamily: "'Fraunces', serif" }}
@@ -175,77 +267,160 @@ export default function Stuck() {
               </h2>
             </div>
 
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#665A43]">
-              {aiFallback ? "Generic question (AI unavailable)" : "AI clarification question"}
-            </p>
+            {/* 1. Slide in brief */}
+            {(loadingSummary || summary) && (
+              <div className="mb-6 rounded-lg border-2 border-[#1F1B16] bg-white p-4">
+                <p className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#665A43]">
+                  <FileText size={15} />
+                  This slide in brief
+                </p>
 
+                {loadingSummary ? (
+                  <p role="status" className="flex items-center gap-2 text-[#4a4338]">
+                    <Loader2 className="animate-spin" size={18} />
+                    Summarizing the slide…
+                  </p>
+                ) : (
+                  <p className="leading-relaxed">{summary}</p>
+                )}
+              </div>
+            )}
+
+            {/* 2. What are you stuck on? */}
             {loadingAI && (
               <p
                 role="status"
                 className="mb-6 flex items-center gap-2 text-lg font-semibold"
               >
                 <Loader2 className="animate-spin" size={22} />
-                Reading your slide…
+                Finding the key ideas on this slide…
               </p>
             )}
 
-            {aiFallback && error && (
+            {aiNotice && (
               <p role="alert" className="mb-4 font-medium text-red-700">
-                {error} Showing a generic question instead.
+                {aiNotice}
               </p>
             )}
 
             {aiQuestion && (
-              <p className="mb-6 text-xl font-semibold">
-                {aiQuestion.question}
-              </p>
-            )}
+              <>
+                <p className="text-xl font-semibold">
+                  {aiQuestion.question}
+                </p>
+                <p className="mb-5 mt-1 text-sm text-[#665A43]">
+                  Pick everything that applies, or add your own topic below.
+                </p>
 
-            <div className="space-y-3">
-              {(aiQuestion?.options ?? []).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={selectedOption === option}
-                  onClick={() => handleOptionSelect(option)}
-                  className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border-2 border-[#1F1B16] px-5 py-3 text-left font-semibold transition ${
-                    selectedOption === option
-                      ? "bg-[#BFE3C0]"
-                      : "bg-white hover:bg-[#FBF6EA]"
-                  }`}
+                <div className="space-y-3">
+                  {allTopics.map((topic) => {
+                    const selected = selectedTopics.includes(topic);
+                    const isExtra = extraTopics.includes(topic);
+
+                    return (
+                      <div key={topic} className="flex items-stretch gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => toggleTopic(topic)}
+                          className={`flex min-h-14 w-full items-center gap-3 rounded-lg border-2 border-[#1F1B16] px-5 py-3 text-left font-semibold transition ${
+                            selected
+                              ? "bg-[#BFE3C0]"
+                              : "bg-white hover:bg-[#FBF6EA]"
+                          }`}
+                        >
+                          {selected ? (
+                            <CheckCircle2 size={22} className="shrink-0" />
+                          ) : (
+                            <Circle size={22} className="shrink-0 text-[#665A43]" />
+                          )}
+                          <span>{topic}</span>
+                        </button>
+
+                        {isExtra && (
+                          <button
+                            type="button"
+                            onClick={() => removeExtraTopic(topic)}
+                            aria-label={`Remove topic: ${topic}`}
+                            className="flex min-w-12 items-center justify-center rounded-lg border-2 border-[#1F1B16] bg-white"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <form
+                  className="mt-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    addCustomTopic();
+                  }}
                 >
-                  <span>{option}</span>
-
-                  {selectedOption === option && (
-                    <CheckCircle2
-                      size={22}
-                      className="shrink-0"
+                  <label htmlFor="custom-topic" className="block font-semibold">
+                    Something else? Add a topic
+                  </label>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      id="custom-topic"
+                      type="text"
+                      value={customTopic}
+                      onChange={(event) => setCustomTopic(event.target.value)}
+                      maxLength={120}
+                      placeholder="e.g. How to choose sensors for the shuttle"
+                      className="min-w-0 flex-1 rounded-lg border-2 border-[#1F1B16] bg-white p-3"
                     />
+                    <button
+                      type="submit"
+                      disabled={!customTopic.trim()}
+                      className="flex items-center gap-1 rounded-lg border-2 border-[#1F1B16] bg-white px-4 font-bold disabled:opacity-50"
+                    >
+                      <Plus size={18} />
+                      Add
+                    </button>
+                  </div>
+                </form>
+
+                <button
+                  type="button"
+                  onClick={handleWriteRequest}
+                  disabled={!selectedTopics.length || loadingDraft}
+                  className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-lg border-2 border-[#1F1B16] bg-[#1F1B16] px-5 py-3 font-bold text-white shadow-[3px_3px_0_#665A43] disabled:opacity-50"
+                >
+                  {loadingDraft ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      Writing your request…
+                    </>
+                  ) : (
+                    <>
+                      <Pencil size={19} />
+                      {draft ? "Rewrite my request" : "Write my request"}
+                      {selectedTopics.length > 0 &&
+                        ` (${selectedTopics.length} topic${selectedTopics.length > 1 ? "s" : ""})`}
+                    </>
                   )}
                 </button>
-              ))}
-            </div>
+              </>
+            )}
 
-            {selectedOption && (
+            {/* 3. Draft and post */}
+            {(draft || error) && (
               <div className="mt-7 rounded-xl border-2 border-[#1F1B16] bg-white p-5">
-
                 <div className="mb-3 flex items-center gap-2">
                   <Pencil size={21} />
-                  <h3 className="text-xl font-bold">
-                    Your tutoring request
-                  </h3>
+                  <h3 className="text-xl font-bold">Your tutoring request</h3>
                 </div>
 
                 <p className="mb-5 text-sm text-[#665A43]">
-                  AI wrote this draft from your slide and your
-                  choice. It can make mistakes, so review and
-                  edit it before posting.
+                  AI wrote this draft from your slide and the topics you
+                  picked. It can make mistakes, so review and edit it before
+                  posting. Tutors will also see the slide itself.
                 </p>
 
-                <label
-                  htmlFor="course"
-                  className="block font-semibold"
-                >
+                <label htmlFor="course" className="block font-semibold">
                   Course
                 </label>
 
@@ -253,35 +428,24 @@ export default function Stuck() {
                   id="course"
                   type="text"
                   value={course}
-                  onChange={(event) =>
-                    setCourse(event.target.value)
-                  }
+                  onChange={(event) => setCourse(event.target.value)}
                   maxLength={40}
-                  placeholder="e.g. COMP 3270"
+                  placeholder="e.g. COMP 3710"
                   className="mt-2 w-full rounded-lg border-2 border-[#1F1B16] p-3"
                 />
 
-                <label
-                  htmlFor="request-draft"
-                  className="mt-5 block font-semibold"
-                >
+                <label htmlFor="request-draft" className="mt-5 block font-semibold">
                   What do you need help with?
                 </label>
 
                 <textarea
                   id="request-draft"
                   value={draft}
-                  onChange={(event) =>
-                    setDraft(event.target.value)
-                  }
+                  onChange={(event) => setDraft(event.target.value)}
                   rows={5}
                   maxLength={2000}
                   disabled={loadingDraft}
-                  placeholder={
-                    loadingDraft
-                      ? "Writing your request…"
-                      : "Describe your question..."
-                  }
+                  placeholder="Describe your question..."
                   className="mt-2 w-full resize-y rounded-lg border-2 border-[#1F1B16] p-4"
                 />
 
@@ -290,10 +454,7 @@ export default function Stuck() {
                 </p>
 
                 {error && (
-                  <p
-                    role="alert"
-                    className="mt-3 font-medium text-red-700"
-                  >
+                  <p role="alert" className="mt-3 font-medium text-red-700">
                     {error}
                   </p>
                 )}
@@ -309,8 +470,8 @@ export default function Stuck() {
                 </button>
 
                 <p className="mt-4 text-center text-xs text-[#665A43]">
-                  Demo mode: this request is saved only
-                  in your browser, not Supabase.
+                  Demo mode: this request is saved only in your browser, not
+                  Supabase.
                 </p>
               </div>
             )}
