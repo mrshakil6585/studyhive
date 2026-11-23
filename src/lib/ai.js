@@ -1,47 +1,102 @@
-// Calls Mahi's Supabase Edge Function (supabase/functions/studyhive-ai).
-// Needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (in .env AND in Vercel).
-const URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/studyhive-ai`;
-const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+import { supabase } from "./supabase";
+
+// Authenticate before calling Mahi's AI backend.
+async function ensureSession() {
+  if (!supabase) {
+    throw new Error("AI is not configured yet. Add the Supabase key to .env.");
+  }
+
+  const { data, error } =
+    await supabase.auth.getSession();
+
+  if (error) throw error;
+
+  if (data.session) {
+    return data.session;
+  }
+
+  const { data: authData, error: authError } =
+    await supabase.auth.signInAnonymously();
+
+  if (authError) throw authError;
+
+  return authData.session;
+}
+
+// Call Mahi's studyhive-ai Edge Function.
 async function callAI(payload) {
-  if (!import.meta.env.VITE_SUPABASE_URL || !KEY) {
-    throw new Error("AI is not configured yet.");
+  const session = await ensureSession();
+
+  if (!session?.access_token) {
+    throw new Error("Could not authenticate student.");
   }
 
-  let res;
-  try {
-    res = await fetch(URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(45000),
+  const { data, error } =
+    await supabase.functions.invoke("studyhive-ai", {
+      body: payload,
     });
-  } catch {
-    throw new Error("Can't reach the AI helper. Check your connection and try again.");
+
+  if (error) {
+    let message = error.message;
+
+    if (error.context instanceof Response) {
+      try {
+        const result = await error.context.clone().json();
+        message = result.error || message;
+      } catch {
+        // Keep the original error.
+      }
+    }
+
+    throw new Error(message);
   }
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || "The AI helper had a problem. Please try again.");
-  }
   return data;
 }
 
+// Prepare slide text.
 const safe = (text, n) =>
-  (text && text.trim() ? text : `This slide (number ${n}) has no readable text.`).slice(0, 15000);
+  (
+    text && text.trim()
+      ? text
+      : `This slide (number ${n}) has no readable text.`
+  ).slice(0, 15000);
 
-// -> { question, options: [2-3 strings] }
-export const clarify = (slideText, slideNumber, confusion) =>
-  callAI({ action: "clarify", slideText: safe(slideText, slideNumber), confusion });
+// AI Action 1: Clarification
+export const clarify = (
+  slideText,
+  slideNumber,
+  confusion
+) =>
+  callAI({
+    action: "clarify",
+    slideText: safe(slideText, slideNumber),
+    confusion,
+  });
 
-// -> { draft }
-export const draft = (slideText, slideNumber, confusion, selectedOption) =>
-  callAI({ action: "draft", slideText: safe(slideText, slideNumber), confusion, selectedOption });
+// AI Action 2: Tutoring request draft
+export const draft = (
+  slideText,
+  slideNumber,
+  confusion,
+  selectedOption
+) =>
+  callAI({
+    action: "draft",
+    slideText: safe(slideText, slideNumber),
+    confusion,
+    selectedOption,
+  });
 
-// -> { explanation, example }
-export const explain = (slideText, slideNumber, question = "") =>
-  callAI({ action: "explain", slideText: safe(slideText, slideNumber), question });
+// AI Action 3: AI Study Companion
+export const explain = (
+  slideText,
+  slideNumber,
+  question = ""
+) =>
+  callAI({
+    action: "explain",
+    slideText: safe(slideText, slideNumber),
+    question,
+  });
