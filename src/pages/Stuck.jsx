@@ -12,9 +12,11 @@ import {
   X,
 } from "lucide-react";
 import SlideViewer from "../components/SlideViewer";
+import SiteHeader from "../components/SiteHeader";
+import { useAuth } from "../lib/auth-context";
+import { STORAGE_KEY } from "../lib/requests";
 import { clarify, summarize, draft as draftRequest } from "../lib/ai";
 
-const STORAGE_KEY = "studyhive-demo-requests";
 const MAX_TOPICS_LENGTH = 500; // backend limit for selectedOption
 
 // Only used if the AI service is unreachable, so the flow never dead-ends.
@@ -29,6 +31,8 @@ const fallbackQuestion = {
 
 export default function Stuck() {
   const navigate = useNavigate();
+  const { user, displayName } = useAuth();
+  const [showName, setShowName] = useState(false);
   const panelRef = useRef(null);
   const runRef = useRef(0);
 
@@ -184,6 +188,7 @@ export default function Stuck() {
       slideText: selectedSlide.slideText,
       slideImage: selectedSlide.slideImage,
       topics: selectedTopics,
+      authorName: user && showName ? displayName : null,
       question: draft.trim(),
       status: "open",
       messages: [],
@@ -221,20 +226,11 @@ export default function Stuck() {
   const allTopics = [...(aiQuestion?.options ?? []), ...extraTopics];
 
   return (
-    <div className="min-h-screen bg-[#FBF6EA] px-4 py-10 text-[#1F1B16] sm:px-6">
-      <main className="mx-auto max-w-3xl">
-        <div className="flex flex-wrap justify-between gap-4">
-          <Link to="/" className="font-bold underline">
-            ← Back to StudyHive
-          </Link>
-
-          <Link to="/board" className="font-bold underline">
-            View Tutor Board →
-          </Link>
-        </div>
-
+    <div className="min-h-screen bg-[#FBF6EA] text-[#1F1B16]">
+      <SiteHeader />
+      <main className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
         <h1
-          className="mb-4 mt-8 text-4xl font-extrabold"
+          className="mb-4 mt-4 text-4xl font-extrabold"
           style={{ fontFamily: "'Fraunces', serif" }}
         >
           Where are you stuck?
@@ -456,6 +452,26 @@ export default function Stuck() {
                 {error && (
                   <p role="alert" className="mt-3 font-medium text-red-700">
                     {error}
+                  </p>
+                )}
+
+                {user ? (
+                  <label className="mt-4 flex items-center gap-3 font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={showName}
+                      onChange={(event) => setShowName(event.target.checked)}
+                      className="h-5 w-5 accent-[#1F1B16]"
+                    />
+                    Post with my name ({displayName})
+                  </label>
+                ) : (
+                  <p className="mt-4 text-sm text-[#665A43]">
+                    You'll post anonymously.{" "}
+                    <Link to="/signin" state={{ from: "/stuck" }} className="font-semibold underline">
+                      Sign in
+                    </Link>{" "}
+                    to post with your name.
                   </p>
                 )}
 
