@@ -113,6 +113,52 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (request.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
+  // Verify the caller is signed in to Supabase.
+  const authorization = request.headers.get("Authorization");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+  if (!authorization?.startsWith("Bearer ")) {
+    return reply({ error: "Authentication required" }, 401);
+  }
+
+  const accessToken = authorization.slice(7).trim();
+
+  if (!accessToken) {
+    return reply({ error: "Missing access token" }, 401);
+  }
+
+  if (!supabaseUrl || !anonKey) {
+    return reply({ error: "Supabase Auth not configured" }, 503);
+  }
+
+  try {
+    const authResponse = await fetch(
+      `${supabaseUrl}/auth/v1/user`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey: anonKey,
+        },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+
+    if (!authResponse.ok) {
+      return reply({ error: "Invalid user session" }, 401);
+    }
+
+    const user = await authResponse.json();
+
+    if (!user?.id) {
+      return reply({ error: "User authentication failed" }, 401);
+    }
+  } catch {
+    return reply({ error: "Unable to verify user" }, 503);
+  }
+
+
   let body: unknown;
   try {
     body = await request.json();
