@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Hand,
 } from "lucide-react";
+import AIStudyCompanion from "./AIStudyCompanion";
 
 // Configure the PDF.js worker.
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -57,6 +58,50 @@ export default function SlideViewer({ onStuck }) {
     pdfRef.current = null;
   }
 
+  // Extract the text of the slide currently on screen.
+  async function readCurrentSlide() {
+    if (!pdfRef.current) {
+      throw new Error("The PDF is still loading. Please wait a moment.");
+    }
+
+    const selectedPage = await pdfRef.current.getPage(page);
+    const content = await selectedPage.getTextContent();
+
+    const slideText = content.items
+      .map((item) => item.str || "")
+      .join(" ")
+      .trim();
+
+    return {
+      slideNumber: page,
+      slideText,
+      pdfTitle: file.name,
+    };
+  }
+
+  // Render the current slide to a small JPEG so tutors can see it on the board.
+  async function captureSlideImage() {
+    try {
+      const pdfPage = await pdfRef.current.getPage(page);
+      const base = pdfPage.getViewport({ scale: 1 });
+      const viewport = pdfPage.getViewport({ scale: 900 / base.width });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+
+      await pdfPage.render({
+        canvasContext: canvas.getContext("2d"),
+        viewport,
+      }).promise;
+
+      return canvas.toDataURL("image/jpeg", 0.72);
+    } catch (err) {
+      console.error("Couldn't capture slide image:", err);
+      return null;
+    }
+  }
+
   async function handleStuck() {
     if (!pdfRef.current || busy) return;
 
@@ -64,21 +109,9 @@ export default function SlideViewer({ onStuck }) {
     setError("");
 
     try {
-      const selectedPage = await pdfRef.current.getPage(page);
-      const content = await selectedPage.getTextContent();
+      const slide = await readCurrentSlide();
+      slide.slideImage = await captureSlideImage();
 
-      const slideText = content.items
-        .map((item) => item.str || "")
-        .join(" ")
-        .trim();
-
-      const slide = {
-        slideNumber: page,
-        slideText,
-        pdfTitle: file.name,
-      };
-
-      console.log("Selected slide:", slide);
       onStuck?.(slide);
     } catch (err) {
       console.error(err);
@@ -192,6 +225,14 @@ export default function SlideViewer({ onStuck }) {
             <Hand size={22} />
             {busy ? "Reading slide..." : "I'm stuck on this slide"}
           </button>
+
+          {numPages > 0 && (
+            <AIStudyCompanion
+              key={`${file.name}-${page}`}
+              getSlide={readCurrentSlide}
+              slideNumber={page}
+            />
+          )}
         </div>
       )}
 
