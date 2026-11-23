@@ -37,6 +37,7 @@ export default function Stuck() {
   const runRef = useRef(0);
 
   const [selectedSlide, setSelectedSlide] = useState(null);
+  const [hasFile, setHasFile] = useState(false);
 
   const [summary, setSummary] = useState("");
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -210,18 +211,63 @@ export default function Stuck() {
       <SiteHeader />
       <main className="mx-auto max-w-3xl px-4 pb-10 sm:px-6">
         <h1
-          className="mb-4 mt-4 text-4xl font-extrabold"
+          className="mb-3 mt-4 text-4xl font-extrabold sm:text-5xl"
           style={{ fontFamily: "'Fraunces', serif" }}
         >
-          Where are you stuck?
+          Where are you{" "}
+          <span className="bg-[linear-gradient(transparent_62%,#F5B82E_62%)] px-1">
+            stuck?
+          </span>
         </h1>
 
-        <p className="mb-8 text-lg text-[#4a4338]">
-          Upload your lecture slides and choose the slide
-          you need help understanding.
+        <p className="mb-6 text-lg text-[#4a4338]">
+          Open your lecture slides, pick the one that lost you, and we'll help
+          you turn it into a question a tutor can answer.
         </p>
 
-        <SlideViewer onStuck={handleSlideSelected} />
+        <ol aria-label="Progress" className="mb-8 grid grid-cols-3 gap-2 sm:gap-3">
+          {[
+            ["Open slides", "Drop or browse a PDF"],
+            ["Pick the slide", "Flip to the confusing one"],
+            ["Get help", "AI + a peer tutor"],
+          ].map(([label, hint], index) => {
+            const step = index + 1;
+            const current = selectedSlide ? 3 : hasFile ? 2 : 1;
+            const done = step < current;
+            const active = step === current;
+            return (
+              <li
+                key={label}
+                aria-current={active ? "step" : undefined}
+                className={`rounded-xl border-2 border-[#1F1B16] p-2 transition sm:p-3 ${
+                  active
+                    ? "bg-[#F5B82E] shadow-[3px_3px_0_#1F1B16]"
+                    : done
+                      ? "bg-[#BFE3C0]"
+                      : "bg-white opacity-70"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-sm font-extrabold sm:text-base">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-[#1F1B16] bg-white text-xs">
+                    {done ? "✓" : step}
+                  </span>
+                  {label}
+                </span>
+                <span className="mt-1 hidden text-xs text-[#4a4338] sm:block">{hint}</span>
+              </li>
+            );
+          })}
+        </ol>
+
+        <SlideViewer
+          onStuck={handleSlideSelected}
+          onFileChange={(nextFile) => {
+            // A different (or no) PDF: close the help panel for the old slide.
+            setHasFile(Boolean(nextFile));
+            setSelectedSlide(null);
+            runRef.current += 1;
+          }}
+        />
 
         {selectedSlide && (
           <section
