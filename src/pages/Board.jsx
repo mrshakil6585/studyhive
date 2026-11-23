@@ -12,6 +12,7 @@ import {
   Users,
   FileText,
   HelpCircle,
+  Trash2,
 } from "lucide-react";
 
 const STORAGE_KEY = "studyhive-demo-requests";
@@ -87,6 +88,11 @@ function loadRequests() {
   }
 
   return sampleRequests;
+}
+
+// Requests posted from the Stuck page in this browser (not the built-in samples).
+function isOwnRequest(request) {
+  return String(request.id).startsWith("request-");
 }
 
 function requestLabel(request) {
@@ -174,6 +180,7 @@ export default function Board() {
   );
   const [filter, setFilter] = useState("all");
   const [reply, setReply] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   // Save changes so they survive a page refresh.
   useEffect(() => {
@@ -197,6 +204,14 @@ export default function Board() {
       (request) =>
         String(request.id) === String(selectedId)
     ) || filteredRequests[0] || null;
+
+  function deleteRequest(id) {
+    setRequests((previous) =>
+      previous.filter((request) => request.id !== id)
+    );
+    setConfirmDeleteId(null);
+    setReply("");
+  }
 
   function acceptRequest(id) {
     setRequests((previous) =>
@@ -322,6 +337,7 @@ export default function Board() {
                   onClick={() => {
                     setSelectedId(String(request.id));
                     setReply("");
+                    setConfirmDeleteId(null);
                   }}
                   className={`w-full rounded-xl border-2 border-[#1F1B16] p-5 text-left transition ${
                     String(selectedRequest?.id) ===
@@ -348,8 +364,13 @@ export default function Board() {
                     </span>
                   </div>
 
-                  <h3 className="text-lg font-extrabold">
+                  <h3 className="flex flex-wrap items-center gap-2 text-lg font-extrabold">
                     {request.title}
+                    {isOwnRequest(request) && (
+                      <span className="rounded-full border border-[#1F1B16] bg-white px-2 py-0.5 text-xs font-bold">
+                        Your post
+                      </span>
+                    )}
                   </h3>
 
                   <p className="mt-2 line-clamp-3 text-sm text-[#665A43]">
@@ -392,9 +413,58 @@ export default function Board() {
 
             {selectedRequest ? (
               <div className="rounded-xl border-2 border-[#1F1B16] bg-white p-5 shadow-[5px_5px_0_#1F1B16] sm:p-6">
-                <p className="text-sm font-bold text-[#665A43]">
-                  {requestLabel(selectedRequest)}
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="text-sm font-bold text-[#665A43]">
+                    {requestLabel(selectedRequest)}
+                  </p>
+
+                  {isOwnRequest(selectedRequest) &&
+                    confirmDeleteId !== selectedRequest.id && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmDeleteId(selectedRequest.id)
+                        }
+                        className="flex items-center gap-1 rounded-lg border-2 border-[#1F1B16] bg-white px-3 py-1 text-sm font-bold text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 size={16} />
+                        Delete
+                      </button>
+                    )}
+                </div>
+
+                {isOwnRequest(selectedRequest) &&
+                  confirmDeleteId === selectedRequest.id && (
+                    <div
+                      role="alertdialog"
+                      aria-labelledby="delete-confirm-text"
+                      className="mt-4 rounded-lg border-2 border-red-700 bg-red-50 p-4"
+                    >
+                      <p id="delete-confirm-text" className="font-bold">
+                        Delete this request? Its replies will be
+                        deleted too. This can't be undone.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            deleteRequest(selectedRequest.id)
+                          }
+                          className="flex items-center gap-1 rounded-lg border-2 border-[#1F1B16] bg-red-700 px-4 py-2 font-bold text-white"
+                        >
+                          <Trash2 size={16} />
+                          Yes, delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded-lg border-2 border-[#1F1B16] bg-white px-4 py-2 font-bold"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                 <h3 className="mt-3 text-2xl font-extrabold">
                   {selectedRequest.title}
