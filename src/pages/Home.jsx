@@ -116,9 +116,14 @@ function Home() {
             </Link>
 
 
-            <button className="flex min-h-12 items-center gap-1 text-lg font-bold underline decoration-2 underline-offset-4">
-              I want to tutor <ArrowRight size={18} />
-            </button>
+            
+<Link
+  to="/board"
+  className="flex min-h-12 items-center gap-1 text-lg font-bold underline decoration-2 underline-offset-4"
+>
+  I want to tutor <ArrowRight size={18} />
+</Link>
+
           </div>
 
           <p className="mt-6 flex items-center gap-2 text-sm text-[#4a4338]">
